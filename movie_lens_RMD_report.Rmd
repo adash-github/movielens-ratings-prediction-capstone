@@ -1,0 +1,465 @@
+---
+title: "MovieLens Capstone Project"
+author: "Anshuman Dash"
+date: "9/30/2020"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+## Introduction:
+One of the many applications of machine learning is in the use of recommendation systems. One great example of this is the 2006 Netflix Challenge, the goal being to improve Neflix's recommendation algorithm by 10% to win 1 million dollars. We set out to use the MovieLens 10 million data set to create our own recommendation system. Our goal for the MovieLens Capstone Project is to utilize the MovieLens dataset to predict user ratings for movies. We utilize techniques learned in class, and expand upon them to train and finally test our final model. Our final goal is to achieve an RMSE value of <0.8490 with our final model. 
+
+Our specific version of the MovieLens dataset contains 10 million ratings/reviews from 72,000 users rating 10,000 movies. In the data set we get access to the userId, movieId, the rating given by that user, timestamp, title, and the movie genre(s). Users rate the movies on scale of 0.5 to 5 in increments of 0.5.
+
+Our goal is to create a model to predict user ratings, accounting for different biases, like the movies, users, etc. We start the project by first downloading, processing, and prepping the data. Then we slowly develop our model, and at each step we check the RMSE value to see how our improvements are going. We then do a final test on our validation set to see how successful we were. 
+
+## Method/Analysis:
+
+Our methodology can be broken down into stages. The first stage is downloading the data and formatting it to develop our models, we call this the **Data Ingestion Stage**. Our second stage is to create datasets to train and test our data. At this stage we will split the data into multiple sets to train our model, we call this the **Preparing Datasets Stage**. Our next stage is where we start actually modelling our data, we build as many models as we need and see how the RMSE decreases/increases, and we improve the models as we need to. This is the **Modelling Stage**. Our final stage is our **Validation Stage**. During the Validation stage we will see if our final model passes and achieves a RMSE value <0.8490.
+
+As we develop our model, I will be explaining some of the reasons behind my decision making. After our **Methods/Analysis** section we will finish with a presentation of our final results, showcasing how our model performed, followed my our **Conclusion** section.
+
+#### Data Ingestion Stage:
+
+In this stage we need to download the data and format it to develop our models. We download the data from GroupLens website, and then format it so that we can create our edx and validation sets. This is also the stage that we download any libraries we may need to run our code. The base code for this portion was provided from the course on downloading and pre-processing the data. I have added additionaly libraries like forcats and kableExtra to help. 
+
+```{r download, message=FALSE, warning=FALSE, echo=FALSE}
+# Packages we may need to run the code
+# Note: this process could take a couple of minutes
+
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+if(!require(kableExtra)) install.packages("kableExtra")
+if(!require(tidyr)) install.packages("tidyr")
+if(!require(stringr)) install.packages("stringr")
+if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(forcats)) install.packages("forcats")
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(magrittr)) install.packages("magrittr")
+
+library(tidyverse)
+library(caret)
+library(data.table)
+library(kableExtra)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(forcats)
+library(dplyr)
+library(magrittr)
+
+
+# MovieLens 10M dataset:
+# https://grouplens.org/datasets/movielens/10m/
+# http://files.grouplens.org/datasets/movielens/ml-10m.zip
+
+# Here we download the data and pre-process it 
+
+dl <- tempfile()
+download.file("http://files.grouplens.org/datasets/movielens/ml-10m.zip", dl)
+
+ratings <- fread(text = gsub("::", "\t", readLines(unzip(dl, "ml-10M100K/ratings.dat"))),
+                 col.names = c("userId", "movieId", "rating", "timestamp"))
+
+movies <- str_split_fixed(readLines(unzip(dl, "ml-10M100K/movies.dat")), "\\::", 3)
+colnames(movies) <- c("movieId", "title", "genres")
+
+movies <- as.data.frame(movies) %>% mutate(movieId = as.numeric(levels(movieId))[movieId],
+                                           title = as.character(title),
+                                           genres = as.character(genres))
+
+movielens <- left_join(ratings, movies, by = "movieId")
+```
+
+
+#### Preparing Datasets Stage:
+
+We are now ready start creating our data sets to train and test our models. The first step is to split the data set into two parts, our training set and our test set. Our training set will be called *edx*, and our test set will be called *validation*. The edx set will be 90% of our original data set, and validation will therefore be the remaining 10%. 
+
+```{r message=FALSE, warning=FALSE, echo=TRUE}
+# Validation set will be 10% of MovieLens data
+set.seed(1) # if using R 3.5 or earlier, use `set.seed(1)`
+test_index <- createDataPartition(y = movielens$rating, times = 1, p = 0.1, list = FALSE)
+edx <- movielens[-test_index,]
+temp <- movielens[test_index,]
+
+# Make sure userId and movieId in validation set are also in edx set
+validation <- temp %>% 
+  semi_join(edx, by = "movieId") %>%
+  semi_join(edx, by = "userId")
+
+# Add rows removed from validation set back into edx set
+removed <- anti_join(temp, validation)
+edx <- rbind(edx, removed)
+
+```
+
+I also made sure that the userId's and movieId's in the validation set are also in the edx set. Next I seperated our edx dataset into another train and test set. The reason we do this is to have a test set that is not our validation set. This is to avoid overtraining our model. So we create *edx_train* and *edx_validation* to be the data sets that we use to train and test our model to avoid overtraining. The following code showcases how I did this. One thing to note is that edx_train contains 90% of the data from edx, with the remaining 10% being in the edx_validation. 
+
+```{r message=FALSE, warning=FALSE, echo=TRUE}
+##### Split Edx Again #####
+
+# This is to avoid over-training, we want to split our set again. 
+
+set.seed(1)
+edx_test_index <- createDataPartition(y = edx$rating, times = 1, p = 0.1, list = FALSE)
+edx_train <- edx[-edx_test_index,]
+edx_temp <- edx[edx_test_index,]
+
+# Make sure userId and movieId in edx_validation set are also in edx_train set
+edx_validation <- edx_temp %>% 
+  semi_join(edx_train, by = "movieId") %>%
+  semi_join(edx_train, by = "userId")
+
+# Add rows removed from validation set back into edx set
+edx_removed <- anti_join(edx_temp, edx_validation)
+edx_train <-  rbind(edx_train, edx_removed)
+
+rm(dl, ratings, movies, test_index, temp, movielens, removed)
+
+```
+
+Now that our datasets are ready, we will begin developing our models in the next stage. But first we need take a look at our data and get some more info about *edx_train* and *edx_validation* . This gives us an idea of just how big our dataset is and how the data actually looks.
+
+```{r warning=FALSE, echo=FALSE}
+print("edx_train:")
+head(edx_train)
+summary(edx_train)
+print("edx_validation:")
+head(edx_validation)
+summary(edx_validation)
+```
+
+One thing to point out is that genres column contains multiple genres associated with that movie. And each genre is seperated by a "|". This is important because later on we will be seperating out the genres to look at average ratings by each genre. 
+
+#### Modelling Stage:
+
+Our modelling can also be broken down into stages, and each stage our focus is to improve the RMSE until we feel comfortable to do a final validation set. Our goal is to create a baseline model, the simplest model is to take the average of the ratings in the edx_train dataset and check the RMSE against our edx_validation set. In this model we are predicting the same rating for all movies regardless of each user. Here is how I coded it:
+
+```{r warning=FALSE}
+##### Base Mean Model #####
+
+# First create data frame to store our RMSE Results
+
+rmse_results <- data_frame()
+
+# Base Model
+# Just using the mean
+mu <- mean(edx_train$rating)
+mu
+
+base_rmse <- RMSE(edx_validation$rating, mu)
+rmse_results <- data_frame(Model = "Base Mean Model", RMSE = base_rmse)
+
+rmse_results %>% knitr::kable() # To look at our results
+
+```
+
+##### Movie Effect Model:
+
+As you can see we get an initial RMSE of 1.06, meaning we have a lot of work to do. To improve our model we need to look at how movies have an affect. We can look at the biases in movies, since different movies will have higher ratings, and others will have lower ratings. Lets first take a look at the histogram of our movie bias. 
+
+```{r warning=FALSE, echo=FALSE}
+### Movie Effect Model ###
+
+movie_avg <- edx_train %>%
+  group_by(movieId) %>%
+  summarize(b_i = mean(rating - mu))
+
+qplot(b_i, data = movie_avg, bins = 25, color = I("black")) # generate plot of movie bias
+```
+
+
+What you will notice is that our histogram is skewed to the left, which is the negative rating effect. So lets go ahead and build the rest of our movie effect model, and check the RMSE. 
+
+```{r warning=FALSE, echo=TRUE}
+pred_ratings <- mu + edx_validation %>%
+  left_join(movie_avg, by = 'movieId') %>%
+  pull(b_i)
+
+movie_rmse <- RMSE(edx_validation$rating, pred_ratings)
+rmse_results <- bind_rows(rmse_results,
+                          data_frame(Model="Movie Effect Model",  
+                                     RMSE = movie_rmse))
+rmse_results %>% knitr::kable()
+```
+
+With an RMSE value of 0.94296, we have improved our model. But it is still not enough. Lets take a look at the user effect.
+
+##### User and Movie Effect Model:
+
+Let us first take a look at the user breakdown. What you will notice is that some users are a lot more active than others. But from a general stand point we see most users fall between reviewing/rating 10 to 100 movies. 
+
+```{r echo=FALSE}
+# Plot to see how our users breakdown
+
+edx %>% count(userId) %>% 
+  ggplot(aes(n)) + 
+  geom_histogram(bins = 35, color = "black") + 
+  scale_x_log10() + 
+  ggtitle("Users and Number of Reviews/Ratings") +
+  xlab("Number of Reviews/Ratings") +
+  ylab("Frequency by User")
+```
+
+This graph shows the frequency of the number of reviews. For example we can see the frequency of 100 reviews, or 500, etc. This just tells us that some peope review a lot of movies, and some only review a few movies. Now we can look at a plot of the user bias. We can do that by creating another histogram.
+
+```{r echo=FALSE}
+##### User + Movie Model #####
+
+user_avg <- edx_train %>%
+  left_join(movie_avg, by = 'movieId') %>%
+  group_by(userId) %>%
+  summarize(b_u = mean(rating - mu - b_i))
+
+qplot(b_u, data = user_avg, bins = 25, color = I("black")) # generate plot of user bias
+
+```
+
+We can see the user bias is actually has a much better distribution compared to the movie bias histogram. So let us go ahead and build our model and look at the RMSE generated. 
+
+```{r echo=TRUE}
+pred_ratings_user <- edx_validation %>%
+  left_join(movie_avg, by = 'movieId') %>%
+  left_join(user_avg, by = 'userId') %>%
+  mutate(prediction = mu + b_i + b_u) %>%
+  pull(prediction)
+
+model_user_movie <- RMSE(edx_validation$rating, pred_ratings_user)
+rmse_results <- bind_rows(rmse_results, 
+                          data_frame(Model = "Movie and User Effect Model",
+                                     RMSE = model_user_movie))
+
+rmse_results %>% knitr::kable()
+```
+
+We see that our RMSE has improved again. We could stop here and try to test our model on the final validation test, but that wouldn't be a good idea. Our edx_train set and edx_validation set being a smaller population than the original edx and validation could be giving us better results. Therefore we will want to really improve our model before doing a final validation test. To continue to improve we will add another factor, genre(s). 
+
+##### Movie, User, and Genre Model:
+
+Now we want to further improve our model by applying the effect of genres. Let's examine more data about genres. To do this we first need to separate the genres since some movies have multiple genre tags. 
+
+```{r echo=TRUE}
+### WARNING: This step takes a long time
+# This is to seperate the genres out into individual tags to then graph the mean rating of each genre
+
+edx_genre <- edx %>%
+   mutate(genre = fct_explicit_na(genres,
+                                       na_level = "(no genres listed)")
+          ) %>%
+   separate_rows(genre,
+                 sep = "\\|")
+```
+
+The following graph shows how different genres have different average ratings. This is important as we want to utilize genres as an effect in our model.
+
+```{r}
+# Here we access the dataset we created with the individual genres and calculatate the means for each genre
+
+edx_genre %>%
+   group_by(genre) %>%
+   summarise(mean = mean(rating)) %>%
+   ggplot(aes(genre, mean)) +
+   theme_classic()  +
+   geom_col() +
+   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+   labs(title = "Means of each Genre",
+        x = "Genres",
+        y = "Mean")
+
+
+```
+
+Additionally we can take a look at the below graph to see how some genres are more prevalent than others. What you will notice is dramas and comedies are a lot more rated/reviewed than documentaries. This means some genres will have more reviews/ratings than others. It is important to consider these variables when building recommendation systems, that some things will be more popular than others. 
+
+```{r echo=FALSE}
+# Create bar plot to show genre breakdown by percentage
+perc_gen <- edx_genre %>%
+  group_by(genre) %>%
+  summarize(n=n()) %>%
+  ungroup() %>%
+  mutate(sumG = sum(n), percentage = n/sumG) %>%
+  arrange(-percentage)
+
+perc_gen %>%
+  ggplot(aes(reorder(genre, percentage), percentage, fill= percentage)) +
+  geom_bar(stat = "identity") + coord_flip() +
+  xlab("Genre") +
+  ylab("Percentage") +
+  ggtitle("Genre Distribution by Percent Rated")
+```
+
+To make our model we will be adding the b_g which is the bias associated with the genre. In my case I did not carry out the effect on individual genres, that is an improvement that can be added on future models. I will talk more about improvements later on. 
+
+```{r echo=TRUE}
+##### Movie, User, and Genre Model #####
+genre_avg <- edx_train %>%
+  left_join(movie_avg, by = "movieId") %>%
+  left_join(user_avg, by = "userId") %>%
+  group_by(genres) %>%
+  summarize(b_g = mean(rating - mu - b_i - b_u))
+
+pred_ratings_genre <- edx_validation %>%
+  left_join(movie_avg, by = "movieId") %>%
+  left_join(user_avg, by = "userId") %>%
+  left_join(genre_avg, by = "genres") %>%
+  mutate(pred = mu + b_i + b_u + b_g) %>%
+  pull(pred)
+
+model_user_movie_genre <- RMSE(edx_validation$rating, pred_ratings_genre)
+rmse_results <- bind_rows(rmse_results, 
+                          data_frame(Model = "Movie, User. and Genre Effect Model",
+                                     RMSE = model_user_movie_genre))
+
+rmse_results %>% knitr::kable()
+
+```
+
+What we notice is another improvement in our RMSE, from 0.864683 to 0.864321, which is great. But we are not done just yet. We still want to ensure that when we do our final validation test that we are sure we will get a RMSE value below 0.8649, therefore we want to keep creating a cushion. Our next step is to apply regularization methods to our model.
+
+##### Regularization
+
+Regularization is a method that adds a penalty term to samples with larger estimates from a smaller sample size. For my model I have applied regularization to create a Regularized Movie + User + Genre Model. Lets see how our model improves with this implementation. 
+
+```{r echo=TRUE}
+# Generate a Lambda plot to find our lowest RMSE
+
+lamdas <- seq(0, 10, 0.25)
+
+# Create a function to generate lambdas and their respective RMSE value
+# Will use the "equation" again to double check the RMSE with our found lamda later
+
+rmses <- sapply(lamdas, function(l){
+  mu <- mean(edx_train$rating)
+  
+  b_i <- edx_train %>%
+    group_by(movieId) %>%
+    summarize(b_i = sum(rating - mu) / (n() + l))
+  
+  b_u <- edx_train %>%
+    left_join(b_i, by = "movieId") %>%
+    group_by(userId) %>%
+    summarize(b_u = sum(rating - b_i - mu)  / (n() + l))
+  
+  b_g <- edx_train %>%
+    left_join(b_i, by = "movieId") %>%
+    left_join(b_u, by = "userId") %>%
+    group_by(genres) %>%
+    summarize(b_g = sum(rating - mu - b_i - b_u) / (n() + l), n_g = n())
+  
+  predicted_ratings <- edx_validation %>%
+    left_join(b_i, by = "movieId") %>%
+    left_join(b_u, by = "userId") %>%
+    left_join(b_g, by = "genres") %>%
+    mutate(pred = mu + b_i + b_u + b_g) %>%
+    .$pred
+  
+  return(RMSE(edx_validation$rating, predicted_ratings))
+  
+})
+
+qplot(lamdas, rmses) # Plot to see the shape of graph and estimate our lowest RMSE
+
+min_lamda <- lamdas[which.min(rmses)] # assigns lowest RMSE so we can use it later
+min_lamda
+
+##### Find RMSE using Lamda Value #####
+
+# Using the lambda value generated with the estimated lowest RMSE we can actually plug it back in
+
+mu <- mean(edx_train$rating)
+
+b_i <- edx_train %>%
+  group_by(movieId) %>%
+  summarize(b_i = sum(rating - mu) / (n() + min_lamda))
+
+b_u <- edx_train %>%
+  left_join(b_i, by = "movieId") %>%
+  group_by(userId) %>%
+  summarize(b_u = sum(rating - b_i - mu)  / (n() + min_lamda))
+
+b_g <- edx_train %>%
+  left_join(b_i, by = "movieId") %>%
+  left_join(b_u, by = "userId") %>%
+  group_by(genres) %>%
+  summarize(b_g = sum(rating - mu - b_i - b_u) / (n() + min_lamda), n_g = n())
+
+reg_predicted_ratings <- edx_validation %>%
+  left_join(b_i, by = "movieId") %>%
+  left_join(b_u, by = "userId") %>%
+  left_join(b_g, by = "genres") %>%
+  mutate(pred = mu + b_i + b_u + b_g) %>%
+  .$pred
+
+reg_RMSE <- RMSE(edx_validation$rating, reg_predicted_ratings)
+
+rmse_results <- bind_rows(rmse_results, 
+                          data_frame(Model = "Reg: Movie, User. and Genre Effect Model",
+                                     RMSE = reg_RMSE))
+rmse_results %>% knitr::kable()
+```
+
+The goal of the code is to create an array of lambda values and the predicted RMSE so that we can identify where our lowest RMSE value is and the associated lambda value. We can then use this lambda value later to get our RMSE value at the predicted lowest value.
+
+Now that we see another successful lowering of the RMSE value we can do a final validation test to see if our model truly works. This will be the only time that we will use the validation data set, up to this point we have been using edx_validation to test our data. 
+
+#### Validation Stage:
+
+Now that we have created a model that we think is ready, we will finally test it using the validation dataset. Again we will utilize the lambda value we found earlier.
+
+```{r echo=TRUE}
+##### Final Validation Test #####
+
+# Using the lamda value we found we remove the function and just see what our RMSE value is
+# This time we will be using our final validation set to see what our lowest RMSE is
+
+mu <- mean(edx$rating)
+
+b_i <- edx %>%
+  group_by(movieId) %>%
+  summarize(b_i = sum(rating - mu) / (n() + min_lamda))
+
+b_u <- edx %>%
+  left_join(b_i, by = "movieId") %>%
+  group_by(userId) %>%
+  summarize(b_u = sum(rating - b_i - mu)  / (n() + min_lamda))
+
+b_g <- edx %>%
+  left_join(b_i, by = "movieId") %>%
+  left_join(b_u, by = "userId") %>%
+  group_by(genres) %>%
+  summarize(b_g = sum(rating - mu - b_i - b_u) / (n() + min_lamda), n_g = n())
+
+# Utilizing final Validation set to see what our RMSE is
+
+final_reg_predicted_ratings <- validation %>%
+  left_join(b_i, by = "movieId") %>%
+  left_join(b_u, by = "userId") %>%
+  left_join(b_g, by = "genres") %>%
+  mutate(pred = mu + b_i + b_u + b_g) %>%
+  .$pred
+
+final_reg_RMSE <- RMSE(validation$rating, final_reg_predicted_ratings)
+
+rmse_results <- bind_rows(rmse_results, 
+                          data_frame(Model = "Final Validation",
+                                     RMSE = final_reg_RMSE))
+rmse_results %>% knitr::kable()
+```
+
+With our final validation test done we can see that we have successfully lowered the RMSE to be below 0.8490, which is our project objective. 
+
+## Conclusion:
+
+In conclusion we were successfully able to achieve a RMSE score below 0.86490 on our final validation test of our model. To achieve this we took our original dataset and split it into the edx and validation set, then split the edx set into edx_train and edx_validation. This was done to avoid overtraining our model. With the edx_train set we designed our model, and then tested it with the edx_validation set. We started with a simple mean model and slowly created subsequent models adding more and more effects. We first started with the movie, then user, and finally genre effect. From a basic overview the movie and user effects were a lot more profound than the genre effect. Afterwards we use our regularization method on the movie, user and genre to create a regularized model. It was with this final model that we tested our validation set and saw our RMSE was below the threshold. One thing to note is our validation RMSE was higher than our regularization model using the edx_validation set. This was a prediction we made, and the reason we continued to develop our model further even when the edx_validation was meeting the course minimum of 0.8649. We knew because we were using a slightly smaller dataset compared to the edx and edx_validation, that we might see slight better results. This is why we wanted to build a model with some cushion on our RMSE results.  
+  
+Overall there were some limitations that under different circumstances make a future model better. One limitation is that we were using the 10 million MovieLens Dataset, if we had the computational power using the larger 100M dataset would have been better. More importantly we might have seen the genre effect have a stronger effect than what it had on our 10M set. Talking about the genre effect what you will notice is that I actually kept the genres clustered, and did not parse them for our genre effect model. The reason behind this was my computer was having a hard time with the computation. Instead I only parsed the genres and made the edx_genres dataset to show some graphs of what the genre effect was having when split up. 
+
+We can further improve our model using more effects such as time, or using new techniques like matrix factorization. Matrix factorization is a powerful technique that is very useful in recommendation systems like this.  
+
+Overall this project gave great insight into how to use techniques learned in our class/book and build upon them to create a recommendation system to learn machine learning techniques. 
+
+

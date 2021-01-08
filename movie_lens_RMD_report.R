@@ -164,6 +164,7 @@ qplot(b_u, data = user_avg, bins = 25, color = I("black")) # generate plot of us
 
 ## ----echo=TRUE--------------------------------------------------------------------------------------
 pred_ratings_user <- edx_validation %>%
+  
   left_join(movie_avg, by = 'movieId') %>%
   left_join(user_avg, by = 'userId') %>%
   mutate(prediction = mu + b_i + b_u) %>%
@@ -265,7 +266,7 @@ rmses <- sapply(lamdas, function(l){
   b_u <- edx_train %>%
     left_join(b_i, by = "movieId") %>%
     group_by(userId) %>%
-    summarize(b_u = sum(rating - b_i - mu)  / (n() + l))
+    summarize(b_u = sum(rating - b_i - mu)  / (n() + l))  
   
   b_g <- edx_train %>%
     left_join(b_i, by = "movieId") %>%

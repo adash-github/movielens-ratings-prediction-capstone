@@ -9,9 +9,9 @@ output:
 ---
 
 ## Introduction:
-One of the many applications of machine learning is in the use of recommendation systems. One great example of this is the 2006 Netflix Challenge, the goal being to improve Neflix's recommendation algorithm by 10% to win 1 million dollars. We set out to use the MovieLens 10 million data set to create our own recommendation system. Our goal for the MovieLens Capstone Project is to utilize the MovieLens dataset to predict user ratings for movies. We utilize techniques learned in class, and expand upon them to train and finally test our final model. Our final goal is to achieve an RMSE value of <0.8490 with our final model. 
+One of the many applications of machine learning is in the use of recommendation systems. One great example of this is the 2006 Netflix Challenge, the goal being to improve Neflix's recommendation algorithm by 10% to win 1 million dollars. We set out to use the MovieLens 10 million data set to create our own recommendation system. Our goal for the MovieLens Capstone Project is to utilize the MovieLens dataset to predict user ratings for movies. We utilize techniques learned in class, and expand upon them to train and finally test our final model. Our final goal is to achieve an RMSE value of <0.8490 with our final model test. 
 
-Our specific version of the MovieLens dataset contains 10 million ratings/reviews from 72,000 users rating 10,000 movies. In the data set we get access to the userId, movieId, the rating given by that user, timestamp, title, and the movie genre(s). Users rate the movies on scale of 0.5 to 5 in increments of 0.5.
+Our specific version of the MovieLens dataset contains 10 million ratings/reviews from 72,000 users rating 10,000 movies. In the dataset we get access to the userId, movieId, the rating given by that user, timestamp, title, and the movie genre(s). Users rate the movies on scale of 0.5 to 5 in increments of 0.5.
 
 Our goal is to create a model to predict user ratings, accounting for different biases, like the movies, users, etc. We start the project by first downloading, processing, and prepping the data. Then we slowly develop our model, and at each step we check the RMSE value to see how our improvements are going. We then do a final test on our validation set to see how successful we were. 
 
@@ -126,9 +126,11 @@ Now that our datasets are ready, we will begin developing our models in the next
 
 ```{r warning=FALSE, echo=FALSE}
 print("edx_train:")
+dim(edx_train)
 head(edx_train)
 summary(edx_train)
 print("edx_validation:")
+dim(edx_validation)
 head(edx_validation)
 summary(edx_validation)
 ```
@@ -160,7 +162,7 @@ rmse_results %>% knitr::kable() # To look at our results
 
 ##### Movie Effect Model:
 
-As you can see we get an initial RMSE of 1.06, meaning we have a lot of work to do. To improve our model we need to look at how movies have an affect. We can look at the biases in movies, since different movies will have higher ratings, and others will have lower ratings. Lets first take a look at the histogram of our movie bias. 
+As you can see we get an initial RMSE of 1.06, meaning we have a lot of work to do. To improve our model we need to look at how movies have an affect. We can look at the biases in movies, since different movies will have higher ratings, and others will have lower ratings. Lets first take a look at the histogram of our movie bias. All I did to create the histogram is group by movieId's and then create the b_i term with "mean(rating - mu)" where mu is the average of all the ratings.  
 
 ```{r warning=FALSE, echo=FALSE}
 ### Movie Effect Model ###
@@ -191,7 +193,7 @@ With an RMSE value of 0.94296, we have improved our model. But it is still not e
 
 ##### User and Movie Effect Model:
 
-Let us first take a look at the user breakdown. What you will notice is that some users are a lot more active than others. But from a general stand point we see most users fall between reviewing/rating 10 to 100 movies. 
+Let us first take a look at the user breakdown. What you will notice is that some users are a lot more active than others. But from a general stand point we see most users fall between reviewing/rating 10 to 100 movies. To make this histogram I log-scaled the x-axis, which is our number or reviews/ratings, to make it easier to view the data. 
 
 ```{r echo=FALSE}
 # Plot to see how our users breakdown
@@ -205,7 +207,7 @@ edx %>% count(userId) %>%
   ylab("Frequency by User")
 ```
 
-This graph shows the frequency of the number of reviews. For example we can see the frequency of 100 reviews, or 500, etc. This just tells us that some peope review a lot of movies, and some only review a few movies. Now we can look at a plot of the user bias. We can do that by creating another histogram.
+This graph shows the frequency of the number of reviews. For example we can see the frequency of 100 reviews, or 500, etc. This just tells us that some peope review a lot of movies, and some only review a few movies. Now we can look at a plot of the user bias. We can do that by creating another histogram similar to how we made our movie bias, b_i term, histogram earlier. 
 
 ```{r echo=FALSE}
 ##### User + Movie Model #####
@@ -254,7 +256,7 @@ edx_genre <- edx %>%
                  sep = "\\|")
 ```
 
-The following graph shows how different genres have different average ratings. This is important as we want to utilize genres as an effect in our model.
+The following graph shows how different genres have different average ratings. This is important as we want to utilize genres as an effect in our model. To make this graph  
 
 ```{r}
 # Here we access the dataset we created with the individual genres and calculatate the means for each genre
@@ -277,7 +279,7 @@ Additionally we can take a look at the below graph to see how some genres are mo
 
 ```{r echo=FALSE}
 # Create bar plot to show genre breakdown by percentage
-perc_gen <- edx_genre %>%
+perc_gen <- edx_genre %>% 
   group_by(genre) %>%
   summarize(n=n()) %>%
   ungroup() %>%
